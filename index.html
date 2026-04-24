@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能手表高保真原型</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
+        .watch-container { position: relative; width: 320px; height: 320px; border-radius: 50%; background: linear-gradient(145deg, #3d3d3d, #252525); box-shadow: 0 10px 30px rgba(0,0,0,0.3), inset 0 2px 5px rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; }
+        .watch-frame { position: absolute; width: 300px; height: 300px; border-radius: 50%; background: linear-gradient(145deg, #2d3436, #1e272e); box-shadow: 0 0 0 3px rgba(0,0,0,0.2); }
+        .watch-screen { position: absolute; width: 260px; height: 260px; border-radius: 50%; background: #000; overflow: hidden; box-shadow: 0 0 0 2px rgba(0,0,0,0.8); }
+        .screen-content { position: absolute; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .screen-content.active { opacity: 1; pointer-events: auto; }
+        .watch-button { width: 50px; height: 50px; border-radius: 12px; background: linear-gradient(145deg, #3d3d3d, #252525); box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-size: 16px; transition: all 0.2s; margin: 8px; }
+        .watch-button:active { transform: scale(0.95); }
+        .watch-button.disabled { opacity: 0.4; cursor: not-allowed; }
+        .watch-button span { font-size: 10px; margin-top: 4px; }
+        .main-button { width: 60px; height: 60px; font-size: 20px; position: relative; }
+        .progress-ring { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; }
+        .progress-ring__circle { transition: stroke-dashoffset 0.1s; stroke: #0984e3; stroke-width: 3; fill: transparent; r: 24; cx: 30; cy: 30; }
+        .long-press-indicator { position: absolute; top: -5px; left: -5px; right: -5px; bottom: -5px; border-radius: 14px; border: 2px solid transparent; transition: border-color 0.1s; }
+        .long-press-indicator.active { border-color: #0984e3; }
+        .status-btn { width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(145deg, #3d3d3d, #252525); cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; transition: all 0.2s; border: 2px solid transparent; }
+        .status-btn.active { border-color: #0984e3; }
+        .status-btn.disabled { opacity: 0.4; cursor: not-allowed; }
+        .qr-code { width: 110px; height: 110px; background: white; padding: 5px; border-radius: 8px; }
+        .qr-code img { width: 100%; height: 100%; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        .animate-bounce { animation: bounce 1s infinite; }
+        .animate-spin { animation: spin 1s linear infinite; }
+        .animate-pulse { animation: pulse 1.5s infinite; }
+        .page-indicator { position: absolute; bottom: 15px; display: flex; gap: 4px; }
+        .indicator-dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.3); }
+        .indicator-dot.active { background: #0984e3; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="flex flex-col items-center">
+        <h1 class="text-2xl font-bold mb-8 text-gray-800">智能手表高保真原型</h1>
+        
+        <div class="flex items-start">
+            <!-- 左侧控制按钮 -->
+            <div class="flex flex-col mr-8">
+                <div class="flex flex-col items-center mb-4">
+                    <div class="text-xs text-gray-500 mb-1">物理按键</div>
+                    <div class="watch-button main-button" id="main-btn">
+                        <div class="long-press-indicator" id="long-press-indicator"></div>
+                        <svg class="progress-ring"><circle class="progress-ring__circle" id="progress-circle" stroke-dasharray="150.8" stroke-dashoffset="150.8"/></svg>
+                        <i class="fas fa-hand-pointer"></i>
+                        <span>按键</span>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-center mb-4">
+                    <div class="text-xs text-gray-500 mb-1">背负状态(非充电)</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="status-btn active" id="burden-undetected" data-status="undetected" title="未检测"><i class="fas fa-question text-gray-400"></i></div>
+                        <div class="status-btn" id="burden-unburdened" data-status="unburdened" title="未背负"><i class="fas fa-times text-gray-500"></i></div>
+                        <div class="status-btn" id="burden-normal" data-status="normal" title="背负正常"><i class="fas fa-check text-green-500"></i></div>
+                        <div class="status-btn" id="burden-abnormal" data-status="abnormal" title="背负异常"><i class="fas fa-exclamation text-red-500"></i></div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-center mb-4">
+                    <div class="text-xs text-gray-500 mb-1">充电状态</div>
+                    <div class="watch-button" id="charging-btn"><i class="fas fa-battery-full"></i><span>充电</span></div>
+                </div>
+
+                <div class="flex flex-col items-center mb-4">
+                    <div class="text-xs text-gray-500 mb-1">激活状态(仅关机)</div>
+                    <div class="flex gap-2">
+                        <div class="status-btn active" id="activation-activated" data-status="activated" title="已激活"><i class="fas fa-check-circle text-green-500"></i></div>
+                        <div class="status-btn" id="activation-deactivated" data-status="deactivated" title="未激活"><i class="fas fa-times-circle text-red-500"></i></div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-center">
+                    <div class="text-xs text-gray-500 mb-1">云端控制</div>
+                    <div class="watch-button" id="cloud-clear-sos-btn" style="background: #e17055;"><i class="fas fa-cloud"></i><span>解除SOS</span></div>
+                </div>
+            </div>
+            
+            <!-- 手表原型 -->
+            <div class="watch-container">
+                <div class="watch-frame"></div>
+                <div class="watch-screen">
+                    <div id="standby-screen" class="screen-content active bg-black"></div>
+                    <div id="logo-screen" class="screen-content">
+                        <div class="text-3xl font-bold text-blue-500 mb-2">SmartWatch</div>
+                        <div class="w-10 h-10 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin"></div>
+                        <div class="text-sm text-gray-400 mt-3">正在启动...</div>
+                    </div>
+                    <div id="qr-screen" class="screen-content">
+                        <div class="text-xs font-medium mb-2">扫描绑定设备</div>
+                        <div class="qr-code"><img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://example.com/bind" alt="QR"></div>
+                        <div class="mt-2 text-center">
+                            <div class="text-[9px] text-blue-300">设备IMEI号</div>
+                            <div class="text-[10px] text-gray-300">860421066461788</div>
+                        </div>
+                    </div>
+                    <div id="emoji-screen" class="screen-content">
+                        <div class="text-[80px] animate-bounce">😊</div>
+                    </div>
+                    <!-- 优化后的基本信息页面：极简排版 -->
+                    <div id="info-screen" class="screen-content">
+                        <div class="text-base font-semibold mb-1">小明</div>
+                        <div class="text-[11px] text-gray-300 mb-1">145cm · 35kg</div>
+                        <div class="text-[11px] text-gray-300">阳光小学 · 六年级</div>
+                    </div>
+                    <div id="contact-screen" class="screen-content">
+                        <div class="text-xs font-medium mb-2">紧急联系人</div>
+                        <div class="text-center text-[11px]">
+                            <div class="font-semibold">张爸爸</div>
+                            <div class="text-gray-300">138-1234-5678</div>
+                            <div class="text-gray-300">阳光花园小区</div>
+                        </div>
+                    </div>
+                    <div id="steps-screen" class="screen-content">
+                        <div class="text-5xl font-bold text-blue-500" id="steps-count">0</div>
+                        <div class="text-sm text-gray-300 mt-2">今日步数</div>
+                    </div>
+                    <div id="burden-screen" class="screen-content">
+                        <div id="burden-icon" class="text-5xl mb-2 text-gray-400">?</div>
+                        <div id="burden-text" class="text-sm font-semibold text-gray-400">未检测</div>
+                        <div id="abnormal-timer" class="text-xs text-red-400 mt-2"></div>
+                    </div>
+                    <!-- 优化后的SOS页面：紧凑排版 -->
+                    <div id="sos-screen" class="screen-content">
+                        <div class="text-3xl text-red-500 mb-1 animate-pulse"><i class="fas fa-exclamation-circle"></i></div>
+                        <div class="text-lg font-bold text-red-500 mb-2">SOS</div>
+                        <div class="text-[10px] space-y-0.5 text-left w-4/5">
+                            <div><span class="text-blue-300">联系人: </span><span>张爸爸</span></div>
+                            <div><span class="text-blue-300">电话: </span><span>138-1234-5678</span></div>
+                            <div><span class="text-blue-300">地址: </span><span>阳光花园小区</span></div>
+                            <div><span class="text-blue-300">血型: </span><span>A型</span></div>
+                            <div><span class="text-blue-300">过敏原: </span><span>花粉、海鲜</span></div>
+                        </div>
+                    </div>
+                    <div id="charging-screen" class="screen-content">
+                        <div class="text-[80px] animate-bounce">🔋</div>
+                    </div>
+                    
+                    <div class="absolute top-2 right-2 text-[10px] px-1 rounded bg-black/50" id="activation-status-indicator">已激活</div>
+                    <div class="absolute top-2 left-2 text-[10px] px-1 rounded bg-black/50" id="burden-status-indicator">未检测</div>
+                    
+                    <div class="page-indicator">
+                        <div class="indicator-dot active" data-page="emoji"></div>
+                        <div class="indicator-dot" data-page="info"></div>
+                        <div class="indicator-dot" data-page="contact"></div>
+                        <div class="indicator-dot" data-page="steps"></div>
+                        <div class="indicator-dot" data-page="qr"></div>
+                        <div class="indicator-dot" data-page="burden"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-8 text-center max-w-md">
+            <p class="text-sm text-gray-600 mb-2 font-semibold">操作说明:</p>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500 text-left">
+                <p>1. 长按5秒开机/关机(佩戴中不可关机)</p>
+                <p>2. 短按切页(含绑定和背负状态页)</p>
+                <p>3. 连按3次触发SOS</p>
+                <p>4. 佩戴状态SOS不可退出</p>
+                <p>5. 充电时锁定按键与背负</p>
+                <p>6. 未检测状态10秒息屏,按键唤醒</p>
+                <p>7. 激活状态仅关机时可切换</p>
+                <p>8. 未激活只能看二维码(充电除外)</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let isPoweredOn = false, isActivated = true, currentPage = 'standby';
+            let burdenStatus = 'undetected', steps = 0, isCharging = false, isSOSActive = false;
+            let canExitSOS = true;
+            let pressStartTime = 0, isLongPress = false, clickCount = 0, clickTimer = null;
+            let standbyTimer = null, abnormalTimer = null;
+            const LONG_PRESS_DURATION = 5000, CLICK_INTERVAL = 500;
+            const pages = ['emoji', 'info', 'contact', 'steps', 'qr', 'burden'];
+
+            const $ = id => document.getElementById(id);
+            const mainBtn = $('main-btn'), chargingBtn = $('charging-btn');
+            
+            const screens = {
+                standby: $('standby-screen'), logo: $('logo-screen'), qr: $('qr-screen'),
+                emoji: $('emoji-screen'), info: $('info-screen'), contact: $('contact-screen'),
+                burden: $('burden-screen'), steps: $('steps-screen'), sos: $('sos-screen'),
+                charging: $('charging-screen')
+            };
+
+            function switchScreen(name) {
+                Object.values(screens).forEach(s => s.classList.remove('active'));
+                
+                // 核心锁定逻辑：未激活且非充电时，强制锁定在二维码页面
+                if (!isActivated && !isCharging && name !== 'qr' && name !== 'logo' && name !== 'standby') {
+                    name = 'qr';
+                }
+                
+                if(screens[name]) screens[name].classList.add('active');
+                currentPage = name;
+                updatePageIndicator();
+                if(name === 'burden') updateBurdenScreenContent();
+            }
+
+            function updatePageIndicator() {
+                document.querySelectorAll('.indicator-dot').forEach(dot => {
+                    if(dot.dataset.page === currentPage) dot.classList.add('active');
+                    else dot.classList.remove('active');
+                });
+            }
+
+            function updateBurdenScreenContent() {
+                const icon = $('burden-icon'), text = $('burden-text');
+                const map = {
+                    undetected: { icon: '?', text: '未检测', color: 'text-gray-400' },
+                    unburdened: { icon: '✕', text: '未背负', color: 'text-gray-500' },
+                    normal: { icon: '✓', text: '背负正常', color: 'text-green-500' },
+                    abnormal: { icon: '✗', text: '背负异常', color: 'text-red-500' }
+                };
+                const data = isCharging ? map['undetected'] : map[burdenStatus];
+                icon.textContent = data.icon; icon.className = `text-5xl mb-2 ${data.color}`;
+                text.textContent = data.text; text.className = `text-sm font-semibold ${data.color}`;
+            }
+
+            function updateBurdenUI() {
+                const indicator = $('burden-status-indicator');
+                const map = {
+                    undetected: { text: '未检测', color: 'text-gray-400' },
+                    unburdened: { text: '未背负', color: 'text-gray-500' },
+                    normal: { text: '背负正常', color: 'text-green-500' },
+                    abnormal: { text: '背负异常', color: 'text-red-500' }
+                };
+                const displayStatus = isCharging ? '未检测(充电)' : map[burdenStatus].text;
+                const displayColor = isCharging ? 'text-gray-400' : map[burdenStatus].color;
+                indicator.textContent = displayStatus; 
+                indicator.className = `absolute top-2 left-2 text-[10px] px-1 rounded bg-black/50 ${displayColor}`;
+                
+                document.querySelectorAll('[id^="burden-"]').forEach(btn => {
+                    if(btn.dataset.status === burdenStatus) btn.classList.add('active'); 
+                    else btn.classList.remove('active');
+                });
+
+                if(currentPage === 'burden') updateBurdenScreenContent();
+            }
+
+            function updateButtonStates() {
+                const isBurdenDisabled = !isPoweredOn || isCharging;
+                document.querySelectorAll('[id^="burden-"]').forEach(btn => {
+                    btn.classList.toggle('disabled', isBurdenDisabled);
+                });
+
+                document.querySelectorAll('[id^="activation-"]').forEach(btn => {
+                    btn.classList.toggle('disabled', isPoweredOn);
+                });
+                
+                updateBurdenUI();
+            }
+
+            function resetStandbyTimer() {
+                if(standbyTimer) clearInterval(standbyTimer);
+                
+                if(isPoweredOn && !isCharging && !isSOSActive && burdenStatus === 'undetected') {
+                    let countdown = 10;
+                    standbyTimer = setInterval(() => {
+                        countdown--;
+                        if(countdown <= 0) { 
+                            clearInterval(standbyTimer); 
+                            switchScreen('standby'); 
+                        }
+                    }, 1000);
+                }
+            }
+
+            function startAbnormalTimer() {
+                if(abnormalTimer) clearInterval(abnormalTimer);
+                if(standbyTimer) clearInterval(standbyTimer); 
+                
+                let countdown = 30;
+                $('abnormal-timer').textContent = `${countdown}s`;
+                abnormalTimer = setInterval(() => {
+                    countdown--;
+                    $('abnormal-timer').textContent = `${countdown}s`;
+                    if(countdown <= 0) {
+                        clearInterval(abnormalTimer);
+                        $('abnormal-timer').textContent = '';
+                        if(isPoweredOn && !isSOSActive) switchScreen('emoji');
+                    }
+                }, 1000);
+            }
+
+            function handlePowerOn() {
+                isPoweredOn = true;
+                switchScreen('logo');
+                setTimeout(() => {
+                    if(!isPoweredOn) return;
+                    if(isActivated) switchScreen('emoji');
+                    else switchScreen('qr');
+                    resetStandbyTimer();
+                    updateButtonStates();
+                }, 2000);
+            }
+
+            function handlePowerOff() {
+                isPoweredOn = false; isSOSActive = false; canExitSOS = true;
+                if(standbyTimer) clearInterval(standbyTimer);
+                if(abnormalTimer) clearInterval(abnormalTimer);
+                switchScreen('standby');
+                updateButtonStates();
+            }
+
+            function triggerSOS() {
+                if(isSOSActive && !canExitSOS) return;
+
+                isSOSActive = !isSOSActive;
+                if(isSOSActive) {
+                    if(burdenStatus === 'normal' || burdenStatus === 'abnormal' || burdenStatus === 'unburdened') {
+                        canExitSOS = false;
+                    } else {
+                        canExitSOS = true;
+                    }
+                    switchScreen('sos');
+                    if(standbyTimer) clearInterval(standbyTimer);
+                    if(abnormalTimer) clearInterval(abnormalTimer);
+                } else {
+                    switchScreen('emoji');
+                    resetStandbyTimer();
+                }
+            }
+
+            $('cloud-clear-sos-btn').addEventListener('click', () => {
+                if(isSOSActive) {
+                    canExitSOS = true;
+                    isSOSActive = false;
+                    if(!isCharging) {
+                        switchScreen('emoji');
+                        resetStandbyTimer();
+                    }
+                }
+            });
+
+            function switchPage() {
+                if(isCharging || isSOSActive || burdenStatus !== 'undetected' || !isActivated) return;
+                
+                let currentIndex = pages.indexOf(currentPage);
+                if(currentIndex === -1) currentIndex = 0;
+                let nextIndex = (currentIndex + 1) % pages.length;
+                switchScreen(pages[nextIndex]);
+                resetStandbyTimer(); 
+            }
+
+            mainBtn.addEventListener('mousedown', () => {
+                if(isCharging) return; 
+                pressStartTime = Date.now(); isLongPress = false;
+                $('long-press-indicator').classList.add('active');
+                
+                const interval = setInterval(() => {
+                    const elapsed = Date.now() - pressStartTime;
+                    const progress = Math.min(elapsed / LONG_PRESS_DURATION, 1);
+                    const offset = 150.8 - (progress * 150.8);
+                    $('progress-circle').style.strokeDashoffset = offset;
+                    
+                    if(elapsed >= LONG_PRESS_DURATION) {
+                        clearInterval(interval); isLongPress = true;
+                        if(!isPoweredOn) handlePowerOn();
+                        else if(!isSOSActive && burdenStatus !== 'normal' && burdenStatus !== 'abnormal') handlePowerOff();
+                    }
+                }, 50);
+                mainBtn.dataset.interval = interval;
+            });
+
+            mainBtn.addEventListener('mouseup', () => {
+                if(isCharging) return; 
+                clearInterval(parseInt(mainBtn.dataset.interval));
+                $('long-press-indicator').classList.remove('active');
+                $('progress-circle').style.strokeDashoffset = 150.8;
+                
+                if(!isLongPress && (Date.now() - pressStartTime) < LONG_PRESS_DURATION) {
+                    if(isPoweredOn) {
+                        if(currentPage === 'standby') {
+                            if(isActivated) switchScreen('emoji');
+                            else switchScreen('qr');
+                            resetStandbyTimer();
+                            return;
+                        }
+
+                        clickCount++;
+                        if(clickTimer) clearTimeout(clickTimer);
+                        clickTimer = setTimeout(() => {
+                            if(clickCount === 3) {
+                                triggerSOS();
+                            } else if(clickCount === 1) {
+                                switchPage();
+                            }
+                            clickCount = 0;
+                        }, CLICK_INTERVAL);
+                    }
+                }
+            });
+
+            mainBtn.addEventListener('mouseleave', () => {
+                clearInterval(parseInt(mainBtn.dataset.interval));
+                $('long-press-indicator').classList.remove('active');
+                $('progress-circle').style.strokeDashoffset = 150.8;
+            });
+
+            document.querySelectorAll('[id^="burden-"]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if(!isPoweredOn || isCharging) return;
+                    
+                    burdenStatus = btn.dataset.status;
+                    updateButtonStates();
+                    
+                    if(isSOSActive) return; 
+
+                    if(burdenStatus === 'normal') {
+                        if(abnormalTimer) clearInterval(abnormalTimer);
+                        $('abnormal-timer').textContent = '';
+                        switchScreen('emoji');
+                    } else if(burdenStatus === 'abnormal') {
+                        switchScreen('burden');
+                        startAbnormalTimer();
+                    } else if(burdenStatus === 'undetected') {
+                        switchScreen('emoji');
+                        resetStandbyTimer(); 
+                    } else { 
+                        switchScreen('emoji');
+                        if(standbyTimer) clearInterval(standbyTimer);
+                    }
+                });
+            });
+
+            chargingBtn.addEventListener('click', () => {
+                isCharging = !isCharging;
+                if(isCharging) {
+                    // 充电时强制为未检测状态
+                    burdenStatus = 'undetected';
+
+                    if(!isPoweredOn) {
+                        isPoweredOn = true;
+                        switchScreen('logo');
+                        setTimeout(() => {
+                            switchScreen('charging');
+                            updateButtonStates();
+                        }, 2000);
+                    } else {
+                        switchScreen('charging');
+                    }
+                    if(standbyTimer) clearInterval(standbyTimer);
+                    if(abnormalTimer) clearInterval(abnormalTimer);
+                } else {
+                    burdenStatus = 'undetected';
+                    // 拔充电后，若仍处于SOS状态则返回SOS页面，否则恢复正常页面
+                    if(isSOSActive) {
+                        switchScreen('sos');
+                    } else {
+                        if(isActivated) switchScreen('emoji');
+                        else switchScreen('qr');
+                        resetStandbyTimer();
+                    }
+                }
+                updateButtonStates();
+            });
+
+            document.querySelectorAll('[id^="activation-"]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if(isPoweredOn) return; 
+                    isActivated = (btn.dataset.status === 'activated');
+                    updateButtonStates();
+                    const indicator = $('activation-status-indicator');
+                    if(isActivated) {
+                        indicator.textContent = '已激活'; indicator.className = 'absolute top-2 right-2 text-[10px] px-1 rounded bg-black/50 text-green-500';
+                        $('activation-activated').classList.add('active'); $('activation-deactivated').classList.remove('active');
+                    } else {
+                        indicator.textContent = '未激活'; indicator.className = 'absolute top-2 right-2 text-[10px] px-1 rounded bg-black/50 text-red-500';
+                        $('activation-deactivated').classList.add('active'); $('activation-activated').classList.remove('active');
+                    }
+                });
+            });
+
+            setInterval(() => {
+                if(isPoweredOn && !isCharging && !isSOSActive && isActivated) {
+                    steps += Math.floor(Math.random() * 10);
+                    $('steps-count').textContent = steps;
+                }
+            }, 5000);
+
+            updateButtonStates();
+        });
+    </script>
+</body>
+</html>
