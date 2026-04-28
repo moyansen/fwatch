@@ -180,6 +180,7 @@
             let isPoweredOn = false, isActivated = true, currentPage = 'standby';
             let burdenStatus = 'undetected', steps = 0, isCharging = false, isSOSActive = false;
             let canExitSOS = true;
+            let lastWornStatus = 'unburdened';
             let pressStartTime = 0, isLongPress = false, clickCount = 0, clickTimer = null;
             let standbyTimer = null, abnormalTimer = null;
             const LONG_PRESS_DURATION = 5000, CLICK_INTERVAL = 500;
@@ -224,7 +225,15 @@
                     normal: { icon: '✓', text: '背负正常', color: 'text-green-500' },
                     abnormal: { icon: '✗', text: '背负异常', color: 'text-red-500' }
                 };
-                const data = isCharging ? map['undetected'] : map[burdenStatus];
+                let displayKey;
+                if (isCharging) {
+                    displayKey = 'undetected';
+                } else if (burdenStatus === 'undetected') {
+                    displayKey = lastWornStatus;
+                } else {
+                    displayKey = burdenStatus;
+                }
+                const data = map[displayKey];
                 icon.textContent = data.icon; icon.className = `text-5xl mb-2 ${data.color}`;
                 text.textContent = data.text; text.className = `text-sm font-semibold ${data.color}`;
             }
@@ -415,6 +424,9 @@
                     if(!isPoweredOn || isCharging) return;
                     
                     burdenStatus = btn.dataset.status;
+                    if (burdenStatus !== 'undetected') {
+                        lastWornStatus = burdenStatus;
+                    }
                     updateButtonStates();
                     
                     if(isSOSActive) return; 
@@ -437,6 +449,7 @@
             });
 
             chargingBtn.addEventListener('click', () => {
+                if(!isCharging && burdenStatus !== 'undetected') return;
                 isCharging = !isCharging;
                 if(isCharging) {
                     // 充电时强制为未检测状态
