@@ -72,10 +72,20 @@
                 </div>
 
                 <div class="flex flex-col items-center mb-4">
-                    <div class="text-xs text-gray-500 mb-1">激活状态(仅关机)</div>
+                    <div class="text-xs text-gray-500 mb-1">激活状态</div>
                     <div class="flex gap-2">
                         <div class="status-btn active" id="activation-activated" data-status="activated" title="已激活"><i class="fas fa-check-circle text-green-500"></i></div>
                         <div class="status-btn" id="activation-deactivated" data-status="deactivated" title="未激活"><i class="fas fa-times-circle text-red-500"></i></div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-center mb-4">
+                    <div class="text-xs text-gray-500 mb-1">设备异常模拟</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="status-btn active" id="exception-none" data-exception="none" title="无异常"><i class="fas fa-check text-green-500"></i></div>
+                        <div class="status-btn" id="exception-network" data-exception="network" title="网络异常"><i class="fas fa-wifi text-yellow-500"></i></div>
+                        <div class="status-btn" id="exception-offline" data-exception="offline" title="设备离线"><i class="fas fa-plug text-gray-400"></i></div>
+                        <div class="status-btn" id="exception-lowbattery" data-exception="lowbattery" title="电量过低"><i class="fas fa-battery-quarter text-red-500"></i></div>
                     </div>
                 </div>
 
@@ -144,6 +154,12 @@
                     <div id="charging-screen" class="screen-content">
                         <div class="text-[80px] animate-bounce">🔋</div>
                     </div>
+                    <div id="exception-screen" class="screen-content">
+                        <div id="exception-icon" class="text-5xl mb-2 text-yellow-400"><i class="fas fa-exclamation-triangle"></i></div>
+                        <div id="exception-title" class="text-sm font-bold text-yellow-400 mb-1">网络异常</div>
+                        <div id="exception-desc" class="text-[10px] text-gray-300 text-center px-4">请检查网络连接</div>
+                        <div id="exception-timer" class="text-xs text-red-400 mt-2"></div>
+                    </div>
                     
                     <div class="absolute top-2 right-2 text-[10px] px-1 rounded bg-black/50" id="activation-status-indicator">已激活</div>
                     <div class="absolute top-2 left-2 text-[10px] px-1 rounded bg-black/50" id="burden-status-indicator">未检测</div>
@@ -171,6 +187,8 @@
                 <p>6. 未检测状态10秒息屏,按键唤醒</p>
                 <p>7. 激活状态随时可切换</p>
                 <p>8. 未激活只能看二维码(充电除外)</p>
+                <p>9. 开机非充电已激活下触发异常显示提示页</p>
+                <p>10. 电量过低10秒后自动关机</p>
             </div>
         </div>
     </div>
@@ -181,6 +199,8 @@
             let burdenStatus = 'undetected', steps = 0, isCharging = false, isSOSActive = false;
             let canExitSOS = true;
             let lastWornStatus = 'unburdened';
+            let exceptionStatus = 'none';
+            let lowBatteryTimer = null;
             let pressStartTime = 0, isLongPress = false, clickCount = 0, clickTimer = null;
             let standbyTimer = null, abnormalTimer = null;
             const LONG_PRESS_DURATION = 5000, CLICK_INTERVAL = 500;
@@ -193,14 +213,14 @@
                 standby: $('standby-screen'), logo: $('logo-screen'), qr: $('qr-screen'),
                 emoji: $('emoji-screen'), info: $('info-screen'), contact: $('contact-screen'),
                 burden: $('burden-screen'), steps: $('steps-screen'), sos: $('sos-screen'),
-                charging: $('charging-screen')
+                charging: $('charging-screen'), exception: $('exception-screen')
             };
 
             function switchScreen(name) {
                 Object.values(screens).forEach(s => s.classList.remove('active'));
                 
-                // 核心锁定逻辑：未激活且非充电时，强制锁定在二维码页面
-                if (!isActivated && !isCharging && name !== 'qr' && name !== 'logo' && name !== 'standby') {
+                // 核心锁定逻辑：未激活且非充电时，强制锁定在二维码页面（异常页优先放行）
+                if (!isActivated && !isCharging && name !== 'qr' && name !== 'logo' && name !== 'standby' && name !== 'exception') {
                     name = 'qr';
                 }
                 
@@ -270,8 +290,11 @@
 
             function resetStandbyTimer() {
                 if(standbyTimer) clearInterval(standbyTimer);
-                
-                if(isPoweredOn && !isCharging && !isSOSActive && burdenStatus === 'undetected') {
+
+                const isExceptionIdle = isPoweredOn && !isCharging && !isSOSActive && (exceptionStatus === 'network' || exceptionStatus === 'offline') && currentPage === 'exception';
+                const isBaseIdle = isPoweredOn && !isCharging && !isSOSActive && (!exceptionStatus || exceptionStatus === 'none') && burdenStatus === 'undetected';
+
+                if(isBaseIdle || isExceptionIdle) {
                     let countdown = 10;
                     standbyTimer = setInterval(() => {
                         countdown--;
@@ -280,6 +303,88 @@
                             switchScreen('standby'); 
                         }
                     }, 1000);
+                }
+            }
+
+            const EXCEPTION_INFO = {
+                network: { title: '网络异常', desc: '请检查网络连接', icon: 'fa-wifi', color: 'text-yellow-400' },
+                offline: { title: '设备离线', desc: '设备已断开连接', icon: 'fa-plug', color: 'text-gray-400' },
+                lowbattery: { title: '电量过低', desc: '即将自动关机，请及时充电', icon: 'fa-battery-quarter', color: 'text-red-500' }
+            };
+
+            function updateExceptionButtonsUI() {
+                document.querySelectorAll('[id^="exception-"]').forEach(btn => {
+                    if (!btn.dataset || !btn.dataset.exception) return;
+                    if (btn.dataset.exception === exceptionStatus) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                });
+            }
+
+            function canShowException() {
+                // 异常优先于未激活：只要开机、非充电、非SOS即可展示异常页
+                return isPoweredOn && !isCharging && !isSOSActive;
+            }
+
+            function renderExceptionScreen() {
+                const info = EXCEPTION_INFO[exceptionStatus];
+                if (!info) return;
+                const icon = $('exception-icon'), title = $('exception-title'), desc = $('exception-desc');
+                icon.className = `text-5xl mb-2 ${info.color}`;
+                icon.innerHTML = `<i class="fas ${info.icon}"></i>`;
+                title.textContent = info.title;
+                title.className = `text-sm font-bold ${info.color} mb-1`;
+                desc.textContent = info.desc;
+            }
+
+            function clearLowBatteryTimer() {
+                if (lowBatteryTimer) { clearInterval(lowBatteryTimer); lowBatteryTimer = null; }
+                $('exception-timer').textContent = '';
+            }
+
+            function restorePageFromException() {
+                if (!isPoweredOn) return;
+                if (isCharging) { switchScreen(isActivated ? 'charging' : 'qr'); return; }
+                if (isSOSActive) { switchScreen('sos'); return; }
+                if (!isActivated) { switchScreen('qr'); return; }
+                if (burdenStatus === 'abnormal') { switchScreen('burden'); startAbnormalTimer(); return; }
+                switchScreen('emoji');
+                resetStandbyTimer();
+            }
+
+            function applyException(type) {
+                exceptionStatus = type;
+                clearLowBatteryTimer();
+                updateExceptionButtonsUI();
+
+                if (type === 'none') {
+                    if (currentPage === 'exception') restorePageFromException();
+                    return;
+                }
+
+                if (!canShowException()) return;
+
+                renderExceptionScreen();
+                switchScreen('exception');
+                renderExceptionScreen();
+                if (standbyTimer) clearInterval(standbyTimer);
+                if (abnormalTimer) clearInterval(abnormalTimer);
+
+                if (type === 'lowbattery') {
+                    let countdown = 10;
+                    $('exception-timer').textContent = `${countdown}s 后关机`;
+                    lowBatteryTimer = setInterval(() => {
+                        countdown--;
+                        $('exception-timer').textContent = `${countdown}s 后关机`;
+                        if (countdown <= 0) {
+                            clearLowBatteryTimer();
+                            exceptionStatus = 'none';
+                            updateExceptionButtonsUI();
+                            handlePowerOff();
+                        }
+                    }, 1000);
+                } else {
+                    // 网络异常/设备离线：10秒后息屏
+                    resetStandbyTimer();
                 }
             }
 
@@ -305,6 +410,12 @@
                 switchScreen('logo');
                 setTimeout(() => {
                     if(!isPoweredOn) return;
+                    // 开机后优先判断异常：异常优先于未激活的二维码绑定流程
+                    if (exceptionStatus && exceptionStatus !== 'none' && canShowException()) {
+                        updateButtonStates();
+                        applyException(exceptionStatus);
+                        return;
+                    }
                     if(isActivated) switchScreen('emoji');
                     else switchScreen('qr');
                     resetStandbyTimer();
@@ -314,6 +425,7 @@
 
             function handlePowerOff() {
                 isPoweredOn = false; isSOSActive = false; canExitSOS = true;
+                clearLowBatteryTimer();
                 if(standbyTimer) clearInterval(standbyTimer);
                 if(abnormalTimer) clearInterval(abnormalTimer);
                 switchScreen('standby');
@@ -344,8 +456,8 @@
                     canExitSOS = true;
                     isSOSActive = false;
                     if(!isCharging) {
-                        switchScreen('emoji');
-                        resetStandbyTimer();
+                        if (exceptionStatus && exceptionStatus !== 'none') applyException(exceptionStatus);
+                        else { switchScreen('emoji'); resetStandbyTimer(); }
                     }
                 }
             });
@@ -389,6 +501,10 @@
                 if(!isLongPress && (Date.now() - pressStartTime) < LONG_PRESS_DURATION) {
                     if(isPoweredOn) {
                         if(currentPage === 'standby') {
+                            if (exceptionStatus && exceptionStatus !== 'none' && canShowException()) {
+                                applyException(exceptionStatus);
+                                return;
+                            }
                             if(isActivated) switchScreen('emoji');
                             else switchScreen('qr');
                             resetStandbyTimer();
@@ -466,9 +582,11 @@
                     if(abnormalTimer) clearInterval(abnormalTimer);
                 } else {
                     burdenStatus = 'undetected';
-                    // 拔充电后，若仍处于SOS状态则返回SOS页面，否则恢复正常页面
+                    // 拔充电后：SOS > 异常 > 正常页面
                     if(isSOSActive) {
                         switchScreen('sos');
+                    } else if (exceptionStatus && exceptionStatus !== 'none') {
+                        applyException(exceptionStatus);
                     } else {
                         if(isActivated) switchScreen('emoji');
                         else switchScreen('qr');
@@ -480,7 +598,10 @@
 
             document.querySelectorAll('[id^="activation-"]').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    isActivated = (btn.dataset.status === 'activated');
+                    const target = btn.dataset.status;
+                    // 异常状态下禁止切换为未激活
+                    if (target === 'deactivated' && exceptionStatus && exceptionStatus !== 'none') return;
+                    isActivated = (target === 'activated');
                     updateButtonStates();
                     const indicator = $('activation-status-indicator');
                     if(isActivated) {
@@ -492,10 +613,18 @@
                     }
                     // 切换激活状态，同步切换页面
                     if(isActivated) {
+                        if (exceptionStatus && exceptionStatus !== 'none' && !isCharging && !isSOSActive) { applyException(exceptionStatus); return; }
                         if(currentPage === 'qr') switchScreen(isCharging ? 'charging' : 'emoji');
                     } else {
                         if(currentPage !== 'qr' && currentPage !== 'logo' && currentPage !== 'standby') switchScreen('qr');
                     }
+                });
+            });
+
+            document.querySelectorAll('[id^="exception-"]').forEach(btn => {
+                if (!btn.dataset || !btn.dataset.exception) return;
+                btn.addEventListener('click', () => {
+                    applyException(btn.dataset.exception);
                 });
             });
 
@@ -507,6 +636,7 @@
             }, 5000);
 
             updateButtonStates();
+            updateExceptionButtonsUI();
         });
     </script>
 </body>
