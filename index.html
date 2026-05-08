@@ -119,8 +119,8 @@
                     <!-- 优化后的基本信息页面：极简排版 -->
                     <div id="info-screen" class="screen-content">
                         <div class="text-base font-semibold mb-1">小明</div>
-                        <div class="text-[11px] text-gray-300 mb-1">145cm · 35kg</div>
-                        <div class="text-[11px] text-gray-300">阳光小学 · 六年级</div>
+                        <div class="text-[11px] text-gray-300 mb-0.5">男 · 2014-05-20</div>
+                        <div class="text-[11px] text-gray-300">145cm · 35kg</div>
                     </div>
                     <div id="contact-screen" class="screen-content">
                         <div class="text-xs font-medium mb-2">紧急联系人</div>
@@ -129,10 +129,6 @@
                             <div class="text-gray-300">138-1234-5678</div>
                             <div class="text-gray-300">阳光花园小区</div>
                         </div>
-                    </div>
-                    <div id="steps-screen" class="screen-content">
-                        <div class="text-5xl font-bold text-blue-500" id="steps-count">0</div>
-                        <div class="text-sm text-gray-300 mt-2">今日步数</div>
                     </div>
                     <div id="burden-screen" class="screen-content">
                         <div id="burden-icon" class="text-5xl mb-2 text-gray-400">?</div>
@@ -144,11 +140,11 @@
                         <div class="text-3xl text-red-500 mb-1 animate-pulse"><i class="fas fa-exclamation-circle"></i></div>
                         <div class="text-lg font-bold text-red-500 mb-2">SOS</div>
                         <div class="text-[10px] space-y-0.5 text-left w-4/5">
-                            <div><span class="text-blue-300">联系人: </span><span>张爸爸</span></div>
-                            <div><span class="text-blue-300">电话: </span><span>138-1234-5678</span></div>
-                            <div><span class="text-blue-300">地址: </span><span>阳光花园小区</span></div>
+                            <div><span class="text-blue-300">紧急联系人: </span><span>张爸爸</span></div>
+                            <div><span class="text-blue-300">紧急电话: </span><span>138-1234-5678</span></div>
                             <div><span class="text-blue-300">血型: </span><span>A型</span></div>
                             <div><span class="text-blue-300">过敏原: </span><span>花粉、海鲜</span></div>
+                            <div><span class="text-blue-300">基础病: </span><span>哮喘</span></div>
                         </div>
                     </div>
                     <div id="charging-screen" class="screen-content">
@@ -168,7 +164,6 @@
                         <div class="indicator-dot active" data-page="emoji"></div>
                         <div class="indicator-dot" data-page="info"></div>
                         <div class="indicator-dot" data-page="contact"></div>
-                        <div class="indicator-dot" data-page="steps"></div>
                         <div class="indicator-dot" data-page="qr"></div>
                         <div class="indicator-dot" data-page="burden"></div>
                     </div>
@@ -196,7 +191,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             let isPoweredOn = false, isActivated = true, currentPage = 'standby';
-            let burdenStatus = 'undetected', steps = 0, isCharging = false, isSOSActive = false;
+            let burdenStatus = 'undetected', isCharging = false, isSOSActive = false;
             let canExitSOS = true;
             let lastWornStatus = 'unburdened';
             let exceptionStatus = 'none';
@@ -204,7 +199,7 @@
             let pressStartTime = 0, isLongPress = false, clickCount = 0, clickTimer = null;
             let standbyTimer = null, abnormalTimer = null;
             const LONG_PRESS_DURATION = 5000, CLICK_INTERVAL = 500;
-            const pages = ['emoji', 'info', 'contact', 'steps', 'qr', 'burden'];
+            const pages = ['emoji', 'info', 'contact', 'qr', 'burden'];
 
             const $ = id => document.getElementById(id);
             const mainBtn = $('main-btn'), chargingBtn = $('charging-btn');
@@ -212,7 +207,7 @@
             const screens = {
                 standby: $('standby-screen'), logo: $('logo-screen'), qr: $('qr-screen'),
                 emoji: $('emoji-screen'), info: $('info-screen'), contact: $('contact-screen'),
-                burden: $('burden-screen'), steps: $('steps-screen'), sos: $('sos-screen'),
+                burden: $('burden-screen'), sos: $('sos-screen'),
                 charging: $('charging-screen'), exception: $('exception-screen')
             };
 
@@ -627,13 +622,6 @@
                     applyException(btn.dataset.exception);
                 });
             });
-
-            setInterval(() => {
-                if(isPoweredOn && !isCharging && !isSOSActive && isActivated) {
-                    steps += Math.floor(Math.random() * 10);
-                    $('steps-count').textContent = steps;
-                }
-            }, 5000);
 
             updateButtonStates();
             updateExceptionButtonsUI();
